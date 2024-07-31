@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
+import PhoneInput from 'react-phone-number-input';
+import 'react-phone-number-input/style.css'; // Importa os estilos
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import logoImg from './assets/images/image.png'
 
 interface Service {
   id: number;
@@ -13,6 +16,9 @@ interface Service {
 const ServiceForm: React.FC = () => {
   const [services, setServices] = useState<Service[]>([]);
   const [clientName, setClientName] = useState('');
+  const [email, setEmail] = useState('');
+  const [whatsapp, setWhatsapp] = useState('');
+
   const proposalDate = new Date();
   const expirationDate = new Date();
   expirationDate.setDate(expirationDate.getDate() + 14);
@@ -116,22 +122,55 @@ const ServiceForm: React.FC = () => {
   };
 
   const handleGeneratePDF = async () => {
-    if (!clientName) {
-      alert('Por favor, informe o nome do cliente.');
+    if (!clientName || !email || !whatsapp) {
+      alert('Por favor, preencha todos os campos obrigatórios.');
       return;
     }
 
     const pdfDoc = await PDFDocument.create();
-    const page = pdfDoc.addPage([600, services.length * 140 + 200]);
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const { height } = page.getSize();
-    let yPosition = height - 50;
+    const pageWidth = 595.276; // A4 width in points
+    const pageHeight = 841.890; // A4 height in points
+    let yPosition = pageHeight - 50;
     let totalServices = 0;
 
-    // Cabeçalho
-    page.drawText('Proposta Comercial', { x: 50, y: yPosition, size: 20, font, color: rgb(0, 0, 0) });
+    const addPage = () => {
+      const page = pdfDoc.addPage([pageWidth, pageHeight]);
+      return page;
+    };
+
+    let page = addPage();
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+    // Adicionar logo
+    const logoImageBytes = await fetch(logoImg).then(res => res.arrayBuffer());
+    const logoImage = await pdfDoc.embedPng(logoImageBytes);
+    const logoDims = logoImage.scale(0.4); // Ajuste o tamanho do logo conforme necessário
+    page.drawImage(logoImage, {
+      x: 50, // Centralizar horizontalmente
+      y: pageHeight - logoDims.height - 50, // Margem superior
+      width: logoDims.width,
+      height: logoDims.height,
+    });
+
+    // Centralizar texto "Proposta Comercial"
+    yPosition -= logoDims.height + 40;
+    const text = 'Proposta Comercial';
+    const textWidth = font.widthOfTextAtSize(text, 20);
+    page.drawText(text, {
+      x: (pageWidth - textWidth) / 2, // Centralizar horizontalmente
+      y: yPosition,
+      size: 20,
+      font,
+      color: rgb(0, 0, 0),
+    });
     yPosition -= 30;
+
+    // Cabeçalho
     page.drawText(`Cliente: ${clientName}`, { x: 50, y: yPosition, size: 12, font, color: rgb(0, 0, 0) });
+    yPosition -= 20;
+    page.drawText(`E-mail: ${email}`, { x: 50, y: yPosition, size: 12, font, color: rgb(0, 0, 0) });
+    yPosition -= 20;
+    page.drawText(`WhatsApp: ${whatsapp}`, { x: 50, y: yPosition, size: 12, font, color: rgb(0, 0, 0) });
     yPosition -= 20;
     page.drawText(`Data da Proposta: ${proposalDate.toLocaleDateString('pt-BR')}`, { x: 50, y: yPosition, size: 12, font, color: rgb(0, 0, 0) });
     yPosition -= 20;
@@ -139,7 +178,7 @@ const ServiceForm: React.FC = () => {
     // Linha divisória
     page.drawLine({
       start: { x: 50, y: yPosition },
-      end: { x: 550, y: yPosition },
+      end: { x: pageWidth - 50, y: yPosition },
       thickness: 1,
       color: rgb(0, 0, 0),
     });
@@ -147,6 +186,11 @@ const ServiceForm: React.FC = () => {
 
     // Listagem de serviços
     services.forEach((service, index) => {
+      if (yPosition < 100) {
+        page = addPage();
+        yPosition = pageHeight - 50;
+      }
+
       yPosition -= 20;
       page.drawText(`Serviço ${index + 1}`, { x: 50, y: yPosition, size: 14, font, color: rgb(0, 0, 0) });
       yPosition -= 20;
@@ -158,21 +202,12 @@ const ServiceForm: React.FC = () => {
       }
       page.drawText(`Unidade: ${service.unit}`, { x: 70, y: yPosition, size: 12, font, color: rgb(0, 0, 0) });
       yPosition -= 15;
-      page.drawText(
-        `Preço Unitário: ${service.price}`,
-        { x: 70, y: yPosition, size: 12, font, color: rgb(0, 0, 0) }
-      );
+      page.drawText(`Preço Unitário: ${service.price}`, { x: 70, y: yPosition, size: 12, font, color: rgb(0, 0, 0) });
       yPosition -= 15;
-      page.drawText(
-        `Quantidade: ${service.quantity}`,
-        { x: 70, y: yPosition, size: 12, font, color: rgb(0, 0, 0) }
-      );
+      page.drawText(`Quantidade: ${service.quantity}`, { x: 70, y: yPosition, size: 12, font, color: rgb(0, 0, 0) });
       yPosition -= 20;
       const totalPrice = Number(parseFloat(service.price.replace(/[^\d,]/g, '').replace(',', '.'))) * Number(service.quantity);
-      page.drawText(
-        `Total: ${formatCurrency(totalPrice.toString())}`,
-        { x: 70, y: yPosition, size: 12, font, color: rgb(0, 0, 0) }
-      );
+      page.drawText(`Total: ${formatCurrency(totalPrice.toString())}`, { x: 70, y: yPosition, size: 12, font, color: rgb(0, 0, 0) });
       yPosition -= 30;
       totalServices += totalPrice;
     });
@@ -180,20 +215,21 @@ const ServiceForm: React.FC = () => {
     // Linha divisória
     page.drawLine({
       start: { x: 50, y: yPosition },
-      end: { x: 550, y: yPosition },
+      end: { x: pageWidth - 50, y: yPosition },
       thickness: 1,
       color: rgb(0, 0, 0),
     });
     yPosition -= 20;
 
     // Total dos serviços
-    page.drawText(
-      `Total dos Serviços: ${formatCurrency(totalServices.toString())}`,
-      { x: 350, y: yPosition, size: 14, font, color: rgb(0, 0, 0) }
-    );
+    page.drawText(`Total dos Serviços: ${formatCurrency(totalServices.toString())}`, { x: 50, y: yPosition, size: 14, font, color: rgb(0, 0, 0) });
     yPosition -= 30;
 
-    // Rodapé
+    // Forma de pagamento
+    page.drawText(`Forma de Pagamento: À vista e cartões de crédito e débito. `, { x: 50, y: yPosition, size: 12, font, color: rgb(0, 0, 0) });
+    yPosition -= 20;
+
+    // Validade da proposta
     page.drawText(`Validade da proposta: ${expirationDate.toLocaleDateString('pt-BR')}`, { x: 50, y: yPosition, size: 12, font, color: rgb(0, 0, 0) });
 
     const pdfBytes = await pdfDoc.save();
@@ -208,7 +244,10 @@ const ServiceForm: React.FC = () => {
   return (
     <div className="p-4">
       <h1 className="text-2xl font-bold mb-4">Gerar Orçamento</h1>
-      <div className="mb-4">
+
+      {/* Seção de Dados do Cliente */}
+      <div className="mb-6">
+        <h2 className="text-xl font-semibold mb-2">Dados do Cliente</h2>
         <input
           type="text"
           name="clientName"
@@ -217,6 +256,29 @@ const ServiceForm: React.FC = () => {
           placeholder="Nome do cliente"
           className="border p-2 mb-2 w-full"
         />
+        <input
+          type="text"
+          name="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="E-mail do cliente"
+          className="border p-2 mb-2 w-full"
+        />
+        <PhoneInput
+          placeholder="WhatsApp do cliente"
+          value={whatsapp}
+          onChange={(value) => setWhatsapp(value || '')}
+          defaultCountry="BR" // Define o país padrão para o Brasil
+          className="border p-2 mb-2 w-full"
+        />
+      </div>
+
+      {/* Linha divisória */}
+      <hr className="my-6" />
+
+      {/* Seção de Serviços */}
+      <div className="mb-4">
+        <h2 className="text-xl font-semibold mb-2">Serviços</h2>
         <input
           type="text"
           name="name"
